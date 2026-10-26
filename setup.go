@@ -10,14 +10,17 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
 
-// SetupCode is what cohesiond prints at start: base64("<key>|<ip>|<fingerprint>").
+// SetupCode is what cohesiond prints at start: base64("<key>|<address>|<fingerprint>"),
+// where the address is a bare IP on the default port and ip:port ([v6]:port) otherwise.
 type SetupCode struct {
 	Key         string
 	IP          net.IP
+	Port        int
 	Fingerprint string
 }
 
@@ -30,11 +33,19 @@ func decodeSetupCode(code string) (SetupCode, error) {
 	if len(parts) != 3 {
 		return SetupCode{}, errors.New("malformed setup code")
 	}
-	ip := net.ParseIP(parts[1])
-	if ip == nil {
-		return SetupCode{}, fmt.Errorf("setup code has an invalid IP %q", parts[1])
+	host, port := parts[1], defaultPort
+	if h, p, err := net.SplitHostPort(parts[1]); err == nil {
+		n, err := strconv.ParseUint(p, 10, 16)
+		if err != nil || n == 0 {
+			return SetupCode{}, fmt.Errorf("setup code has an invalid port %q", p)
+		}
+		host, port = h, int(n)
 	}
-	return SetupCode{Key: parts[0], IP: ip, Fingerprint: parts[2]}, nil
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return SetupCode{}, fmt.Errorf("setup code has an invalid IP %q", host)
+	}
+	return SetupCode{Key: parts[0], IP: ip, Port: port, Fingerprint: parts[2]}, nil
 }
 
 func runSetup(store *Store, args []string) error {
@@ -57,7 +68,7 @@ func runSetup(store *Store, args []string) error {
 	if err != nil {
 		return fmt.Errorf("cannot create identity: %w", err)
 	}
-	server := Server{IP: code.IP.String(), Fingerprint: code.Fingerprint}
+	server := Server{IP: code.IP.String(), Port: code.Port, Fingerprint: code.Fingerprint}
 	upstream, err := newUpstream(server, identity)
 	if err != nil {
 		return err
@@ -88,12 +99,16 @@ type registeredClient struct {
 // session routes refuse a client until it is registered.
 func (u *Upstream) register(setupKey, name string) (registeredClient, error) {
 	body, _ := json.Marshal(map[string]string{"setup_key": setupKey, "client_name": name})
-	http := &http.Client{Transport: u.http.Transport, Timeout: 15 * time.Second}
-	res, err := http.Post(u.base+"/register", "application/json", bytes.NewReader(body))
+	hc := &http.Client{Transport: u.http.Transport, Timeout: 15 * time.Second}
+	res, err := hc.Post(u.base+"/register", "application/json", bytes.NewReader(body))
 	if err != nil {
 		return registeredClient{}, fmt.Errorf("cannot reach cohesiond at %s: %w", u.base, err)
 	}
 	defer res.Body.Close()
+	// cohesiond answers any refusal with a bare 401 and no reason.
+	if res.StatusCode == http.StatusUnauthorized {
+		return registeredClient{}, errors.New("cohesiond did not accept the setup code; it may have expired, so get a new one")
+	}
 	if res.StatusCode != 200 {
 		return registeredClient{}, fmt.Errorf("cohesiond answered /register with %s", res.Status)
 	}

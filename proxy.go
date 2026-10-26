@@ -11,20 +11,22 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"time"
 
 	"github.com/coder/websocket"
 )
 
-// cohesiond always listens here.
-const cohesiondPort = "3000"
+// The port cohesiond listens on unless started with --port, and the one a
+// setup code implies when its address names none.
+const defaultPort = 3000
 
 // Largest request body /command forwards.
 const maxCommandBody = 32 << 20
 
 // Upstream is the proxy's mutual-TLS connection to cohesiond.
 type Upstream struct {
-	base string // https://ip:3000
+	base string // https://ip:port
 	http *http.Client
 	// WebSocket upgrades need HTTP/1.1, so they get their own transport.
 	ws *http.Client
@@ -40,7 +42,7 @@ func newUpstream(server Server, identity []byte) (*Upstream, error) {
 		return nil, err
 	}
 	return &Upstream{
-		base: "https://" + net.JoinHostPort(server.IP, cohesiondPort),
+		base: "https://" + net.JoinHostPort(server.IP, strconv.Itoa(server.Port)),
 		http: &http.Client{Transport: &http.Transport{
 			TLSClientConfig:   httpTLS,
 			ForceAttemptHTTP2: true,

@@ -20,7 +20,9 @@ type Store struct {
 
 // Server is how the proxy reaches cohesiond, taken from the setup code.
 type Server struct {
-	IP          string `json:"ip"`
+	IP string `json:"ip"`
+	// Absent from configs saved before setup codes carried a port.
+	Port        int    `json:"port,omitempty"`
 	Fingerprint string `json:"server_fingerprint"`
 }
 
@@ -61,8 +63,13 @@ func (s *Store) LoadServer() (Server, error) {
 	if err != nil {
 		return server, err
 	}
-	err = json.Unmarshal(data, &server)
-	return server, err
+	if err := json.Unmarshal(data, &server); err != nil {
+		return server, err
+	}
+	if server.Port == 0 {
+		server.Port = defaultPort
+	}
+	return server, nil
 }
 
 func (s *Store) SaveServer(server Server) error {
