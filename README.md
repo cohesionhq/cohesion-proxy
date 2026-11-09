@@ -21,3 +21,7 @@ its client is revoked.
 
 State lives in `~/.config/cohesion-proxy` (or `$XDG_CONFIG_HOME`, or `-config DIR`):
 `identity.pem`, `server.json`, and `clients.db` (SQLite, token hashes only).
+
+## Licence
+
+MIT. See [LICENSE](LICENSE).
