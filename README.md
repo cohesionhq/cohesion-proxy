@@ -1,6 +1,6 @@
 # cohesion-proxy
 
-Registers with a [Cohesion](https://github.com/jacksonzamorano/cohesion) daemon as a
+Registers with a [Cohesion](https://github.com/cohesionhq/cohesion) daemon as a
 mutual-TLS client, then serves cohesiond's `/command` and `/connect` (WebSocket)
 endpoints over plain HTTP to clients holding a token it issued.
 
